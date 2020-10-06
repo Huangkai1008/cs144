@@ -6,8 +6,24 @@
 
 using namespace std;
 
+//! \brief get_URL fetch Web pages over the Internet using the
+//! operating system’s TCP support and stream-socket abstraction.
+//!
+//! \param host is the target hostname .
+//! \param path is the web page path.
 void get_URL(const string &host, const string &path) {
     // Your code here.
+    Address address(host, "http");
+    TCPSocket socket;
+    // Connect socket to the address of server.
+    socket.connect(address);
+    // Send http request, include the “Connection: close” header.
+    socket.write("GET " + path + " HTTP/1.1\r\n");
+    socket.write("HOST: " + host + "\r\n");
+    socket.write("Connection: close\r\n");
+    socket.write("\r\n");
+    // Shut down the writing side.
+    socket.shutdown(SHUT_WR);
 
     // You will need to connect to the "http" service on
     // the computer whose name is in the "host" string,
@@ -16,6 +32,10 @@ void get_URL(const string &host, const string &path) {
     // Then you'll need to print out everything the server sends back,
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
+    while (!socket.eof()) {
+        cout << socket.read();
+    }
+    socket.close();
 
     cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
     cerr << "Warning: get_URL() has not been implemented yet.\n";
