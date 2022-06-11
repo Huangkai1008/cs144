@@ -20,12 +20,25 @@ class TCPReceiver {
     //! The maximum number of bytes we'll store.
     size_t _capacity;
 
+    //! Whether the SYN flag received.
+    //! If this field is true, the receiver's state is `SYN_RECV`.
+    //! if SYN received, the receiver's state convert `LISTEN` to `SYN_RECV`.
+    bool _syn_received = false;
+
+    //! Whether the FIN flag received.
+    //! If this field is true, the receiver's state is `FIN_RECV`.
+    //! If FIN received, the receiver's state convert `SYN_RECV` to `FIN_RECV`.
+    bool _fin_received = false;
+
+    //! ISN.
+    WrappingInt32 _isn;
+
   public:
     //! \brief Construct a TCP receiver
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) {}
+    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity), _isn(0) {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{
