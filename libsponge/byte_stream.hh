@@ -22,8 +22,8 @@ class ByteStream {
     std::deque<char> _buffer;  //!< The buffer of the stream. The deque front is the output size,
                                //!< The deque back is the input size.
     size_t _capacity;          //!< The capacity of the stream.
-    size_t _write_bytes;        //!< The written bytes of the stream.
-    size_t _read_bytes;         //!< The read bytes of the stream.
+    size_t _write_bytes;       //!< The written bytes of the stream.
+    size_t _read_bytes;        //!< The read bytes of the stream.
     bool _input_ended;         //!< Whether the input ended.
     bool _error{};             //!< Flag indicating that the stream suffered an error.
 

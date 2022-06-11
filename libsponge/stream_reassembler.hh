@@ -4,6 +4,7 @@
 #include "byte_stream.hh"
 
 #include <cstdint>
+#include <set>
 #include <string>
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
@@ -11,9 +12,35 @@
 class StreamReassembler {
   private:
     // Your code here -- add private members as necessary.
+    //! Segment is the substring of byte stream.
+    struct segment {
+        size_t index;  //!< The begin index of the segment
+        string data;   //!< The data of the segment
+        bool operator<(const segment &s) const { return index < s.index; }
+    };
 
-    ByteStream _output;  //!< The reassembled in-order byte stream
-    size_t _capacity;    //!< The maximum number of bytes
+    ByteStream _output;                //!< The reassembled in-order byte stream
+    size_t _capacity;                  //!< The maximum number of bytes
+    bool _eof = false;                 //!< Whether the last byte of `data` will be the last byte in the entire stream
+    size_t _first_unread = 0;          //!< The first unread bytes index
+    size_t _first_unassembled = 0;     //!< The first unassembled bytes index
+    size_t _first_unacceptable;        //!< The first unacceptable bytes index
+    std::set<segment> _segments = {};  //!< The stored segments
+
+    //! Add segment to the StreamReassembler
+    void _add_segment(segment &s, const bool eof);
+
+    //! Merge two segments.
+    static void _merge_segments(segment &s, const segment &other);
+
+    //! Whether two segments overlapping.
+    static bool _is_overlapping(const segment &a, const segment &b);
+
+    //! Stitch output until the first unassembled index.
+    void _stitch_output();
+
+    //! Write data string of segment into output.
+    void _stitch_segment(const segment &s);
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
