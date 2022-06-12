@@ -9,6 +9,30 @@
 #include <functional>
 #include <queue>
 
+//! \brief The retransmission timer.
+class Timer {
+  private:
+    //! whether the timer is running
+    bool _is_timer_running{false};
+
+    //! the time elapsed
+    unsigned int _time_elapsed{0};
+
+    //! current value of RTO
+    unsigned int _retransmission_timeout;
+
+  public:
+    //! Initialize a Timer
+    explicit Timer(unsigned int _initial_retransmission_timeout);
+
+    //! Whether the timer running
+    bool is_running() const;
+
+    //! Whether the timer expired
+    bool is_expired() const;
+
+};
+
 //! \brief The "sender" part of a TCP implementation.
 
 //! Accepts a ByteStream, divides it up into segments and sends the
@@ -31,6 +55,12 @@ class TCPSender {
 
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
+
+    //! the number of consecutive retransmissions
+    unsigned int _consecutive_retransmissions = 0;
+
+    //! the tcp sender timer
+    Timer _timer;
 
   public:
     //! Initialize a TCPSender
