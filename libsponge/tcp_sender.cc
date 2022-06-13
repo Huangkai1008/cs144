@@ -37,15 +37,45 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     if (!_timer.is_running()) {
         return;
     }
+
+    _timer.tick(ms_since_last_tick);
+
+    //! If the timer is expired and exist outstanding segments,
+    //! retransmit the earliest (lowest sequence number) segment
+    if (_timer.is_expired() && !_segments_outstanding.empty()) {
+        _segments_out.push(_segments_outstanding.front());
+
+        //! If the window size is nonzero:
+        //! 1. keep track of the number of consecutive retransmissions
+        //! 2. double the value of RTO
+        if (_receiver_window_size) {
+            _consecutive_retransmissions += 1;
+            _timer.set_rto(_timer.rto() << 1);
+        }
+
+        //! reset the transmission timer and start it
+        _timer.start();
+    }
 }
 
-unsigned int TCPSender::consecutive_retransmissions() const { return {}; }
+unsigned int TCPSender::consecutive_retransmissions() const { return _consecutive_retransmissions; }
 
 void TCPSender::send_empty_segment() {}
 
 Timer::Timer(const unsigned int _initial_retransmission_timeout)
     : _retransmission_timeout(_initial_retransmission_timeout) {}
 
+void Timer::start() {
+    this->_time_elapsed = 0;
+    this->_is_timer_running = true;
+}
+
 bool Timer::is_running() const { return this->_is_timer_running; }
 
 bool Timer::is_expired() const { return this->_time_elapsed >= this->_retransmission_timeout; }
+
+void Timer::tick(const size_t ms_since_last_tick) const { this->_time_elapsed + ms_since_last_tick; }
+
+unsigned int Timer::rto() const { return this->_retransmission_timeout; }
+
+void Timer::set_rto(const unsigned int _rto) { this->_retransmission_timeout = _rto; }

@@ -12,18 +12,21 @@
 //! \brief The retransmission timer.
 class Timer {
   private:
-    //! whether the timer is running
+    //! Whether the timer is running
     bool _is_timer_running{false};
 
-    //! the time elapsed
+    //! The time elapsed
     unsigned int _time_elapsed{0};
 
-    //! current value of RTO
+    //! Current value of RTO
     unsigned int _retransmission_timeout;
 
   public:
     //! Initialize a Timer
     explicit Timer(unsigned int _initial_retransmission_timeout);
+
+    //! Start timer
+    void start();
 
     //! Whether the timer running
     bool is_running() const;
@@ -31,6 +34,14 @@ class Timer {
     //! Whether the timer expired
     bool is_expired() const;
 
+    //! \brief Notifies the Timer of the passage of time
+    void tick(size_t ms_since_last_tick) const;
+
+    //! Get current RTO
+    unsigned int rto() const;
+
+    //! Set current RTO
+    void set_rto(const unsigned int _rto);
 };
 
 //! \brief The "sender" part of a TCP implementation.
@@ -59,8 +70,14 @@ class TCPSender {
     //! the number of consecutive retransmissions
     unsigned int _consecutive_retransmissions = 0;
 
+    //! the size of receiver window
+    uint16_t _receiver_window_size = 0;
+
     //! the tcp sender timer
     Timer _timer;
+
+    //! outstanding segments that the TCPSender may resend
+    std::queue<TCPSegment> _segments_outstanding;
 
   public:
     //! Initialize a TCPSender
