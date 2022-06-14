@@ -28,6 +28,9 @@ class Timer {
     //! Start timer
     void start();
 
+    //! Stop timer
+    void stop();
+
     //! Whether the timer running
     bool is_running() const;
 
@@ -35,7 +38,7 @@ class Timer {
     bool is_expired() const;
 
     //! \brief Notifies the Timer of the passage of time
-    void tick(size_t ms_since_last_tick) const;
+    void tick(const size_t ms_since_last_tick);
 
     //! Get current RTO
     unsigned int rto() const;
@@ -67,17 +70,30 @@ class TCPSender {
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
 
-    //! the number of consecutive retransmissions
-    unsigned int _consecutive_retransmissions = 0;
+    //! last acknowledge number
+    uint64_t _last_ackno{0};
 
-    //! the size of receiver window
-    uint16_t _receiver_window_size = 0;
+    //! the number of consecutive retransmissions
+    unsigned int _consecutive_retransmissions{0};
+
+    //! the size of receiver window.
+    uint16_t _receiver_window_size{0};
 
     //! the tcp sender timer
     Timer _timer;
 
     //! outstanding segments that the TCPSender may resend
-    std::queue<TCPSegment> _segments_outstanding;
+    std::queue<TCPSegment> _segments_outstanding{};
+
+    //! Whether the SYN flag sent
+    //! If SYN sent, the sender's state convert `CLOSED` to `SYN_SENT`
+    bool _syn_sent = false;
+
+    //! Whether the FIN flag sent.
+    bool _fin_sent = false;
+
+    //! How many sequence numbers are occupied by segments sent but not yet acknowledged.
+    uint64_t _bytes_in_flight = 0;
 
   public:
     //! Initialize a TCPSender
@@ -134,6 +150,12 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
+
+    //! Send segment
+    void send_segment(TCPSegment &seg);
+
+    //! Whether the ack valid
+    bool _is_ack_valid(uint64_t absolute_ackno);
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
