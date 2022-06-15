@@ -38,10 +38,6 @@ void TCPSender::fill_window() {
         return;
     }
 
-    //    if (_fin_sent) {
-    //        return;
-    //    }
-
     //! If SYN flag has sent but nothing acknowledged, wait util the ack.
     if (next_seqno_absolute() == bytes_in_flight()) {
         return;
