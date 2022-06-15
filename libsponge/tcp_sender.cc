@@ -34,18 +34,13 @@ void TCPSender::fill_window() {
     if (!_syn_sent) {
         seg.header().syn = true;
         send_segment(seg);
-
         _syn_sent = true;
         return;
     }
 
-    //        if (!_segments_outstanding.empty() && _segments_outstanding.front().header().syn)
-    //            return;
-    //
-    //        if (!_stream.buffer_size() && !_stream.eof())
-    //            return;
-    //        if (_fin_sent)
-    //            return;
+    //    if (_fin_sent) {
+    //        return;
+    //    }
 
     //! If SYN flag has sent but nothing acknowledged, wait util the ack.
     if (next_seqno_absolute() == bytes_in_flight()) {
@@ -57,10 +52,18 @@ void TCPSender::fill_window() {
     //! `zero window probing`
     uint64_t window_size = _receiver_window_size == 0 ? 1 : _receiver_window_size;
     uint64_t remain;
-    while ((remain = window_size - (_next_seqno - _last_ackno))) {
+    while ((remain = window_size - (_next_seqno - _last_ackno)) && !_fin_sent) {
+        //! Set fin flag.
+        if (_stream.eof()) {
+            seg.header().fin = true;
+            _fin_sent = true;
+            send_segment(seg);
+            return;
+        }
+
         uint64_t payload_size = min(remain, TCPConfig::MAX_PAYLOAD_SIZE);
         seg.payload() = _stream.read(payload_size);
-        //! Set fin flag.
+        //! After the stream read, check whether the stream eof.
         if (_stream.eof() && seg.length_in_sequence_space() < window_size) {
             seg.header().fin = true;
             _fin_sent = true;
@@ -83,8 +86,6 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     _receiver_window_size = window_size;
     _last_ackno = absolute_ackno;
 
-    _timer.start();
-
     while (!_segments_outstanding.empty()) {
         TCPSegment seg = _segments_outstanding.front();
         if (unwrap(seg.header().seqno, _isn, _next_seqno) + seg.length_in_sequence_space() > absolute_ackno) {
@@ -92,14 +93,16 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
         _bytes_in_flight -= seg.length_in_sequence_space();
         _segments_outstanding.pop();
+
+        _timer.start();
         _timer.set_rto(_initial_retransmission_timeout);
+        _consecutive_retransmissions = 0;
     }
 
-    _consecutive_retransmissions = 0;
-
-    if (_segments_out.empty()) {
+    if (!bytes_in_flight()) {
         _timer.stop();
     }
+
     fill_window();
 }
 
