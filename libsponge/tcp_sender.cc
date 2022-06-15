@@ -39,13 +39,13 @@ void TCPSender::fill_window() {
         return;
     }
 
-    //    if (!_segments_outstanding.empty() && _segments_outstanding.front().header().syn)
-    //        return;
+    //        if (!_segments_outstanding.empty() && _segments_outstanding.front().header().syn)
+    //            return;
     //
-    //    if (!_stream.buffer_size() && !_stream.eof())
-    //        return;
-    //    if (_fin_sent)
-    //        return;
+    //        if (!_stream.buffer_size() && !_stream.eof())
+    //            return;
+    //        if (_fin_sent)
+    //            return;
 
     //! If SYN flag has sent but nothing acknowledged, wait util the ack.
     if (next_seqno_absolute() == bytes_in_flight()) {
@@ -63,9 +63,11 @@ void TCPSender::fill_window() {
         //! Set fin flag.
         if (_stream.eof() && seg.length_in_sequence_space() < window_size) {
             seg.header().fin = true;
+            _fin_sent = true;
         }
         if (seg.length_in_sequence_space() == 0)
             return;
+
         send_segment(seg);
     }
 }
@@ -90,13 +92,15 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
         _bytes_in_flight -= seg.length_in_sequence_space();
         _segments_outstanding.pop();
+        _timer.set_rto(_initial_retransmission_timeout);
     }
 
-    fill_window();
+    _consecutive_retransmissions = 0;
 
     if (_segments_out.empty()) {
         _timer.stop();
     }
+    fill_window();
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
@@ -116,8 +120,8 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
         //! If the window size is nonzero:
         //! 1. keep track of the number of consecutive retransmissions
         //! 2. double the value of RTO
-        if (_receiver_window_size) {
-            _consecutive_retransmissions += 1;
+        if (_receiver_window_size || _segments_outstanding.front().header().syn) {
+            ++_consecutive_retransmissions;
             _timer.set_rto(_timer.rto() << 1);
         }
 
@@ -141,6 +145,11 @@ void TCPSender::send_segment(TCPSegment &seg) {
 
     _next_seqno += seg.length_in_sequence_space();
     _bytes_in_flight += seg.length_in_sequence_space();
+
+    //! If the timer is not running, start the timer.
+    if (!_timer.is_running()) {
+        _timer.start();
+    }
 }
 
 void TCPSender::send_empty_segment() {
