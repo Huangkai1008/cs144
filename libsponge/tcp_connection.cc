@@ -94,14 +94,43 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 bool TCPConnection::active() const { return _active; }
 
 size_t TCPConnection::write(const string &data) {
-    DUMMY_CODE(data);
-    return {};
+    // If the connection is not active, refuse writing.
+    if (!_active) {
+        return 0;
+    }
+
+    size_t write_size = _sender.stream_in().write(data);
+    _sender.fill_window();
+    send_segments();
+    return write_size;
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
-void TCPConnection::tick(const size_t ms_since_last_tick) { DUMMY_CODE(ms_since_last_tick); }
+void TCPConnection::tick(const size_t ms_since_last_tick) {
+    // If the connection is not active, refuse ticking.
+    if (!_active) {
+        return;
+    }
 
-void TCPConnection::end_input_stream() {}
+    _time_since_last_segment_received += ms_since_last_tick;
+    _sender.tick(_time_since_last_segment_received);
+    // if the number of consecutive retransmissions is more than an upper limit,
+    // abort the connection, and send a reset segment to the peer.
+    if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
+        send_rst_segment();
+        unclean_shutdown();
+    }
+
+    // TCP clean shutdown if necessary.
+
+    send_segments();
+}
+
+void TCPConnection::end_input_stream() {
+    _sender.stream_in().end_input();
+    _sender.fill_window();
+    send_segments();
+}
 
 void TCPConnection::connect() {
     _sender.fill_window();
@@ -114,6 +143,7 @@ TCPConnection::~TCPConnection() {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
 
             // Your code here: need to send an RST segment to the peer
+            send_rst_segment();
         }
     } catch (const exception &e) {
         std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;
@@ -129,16 +159,56 @@ void TCPConnection::send_segments() {
         if (_receiver.ackno().has_value()) {
             seg.header().ack = true;
             seg.header().ackno = _receiver.ackno().value();
-            // "Send the biggest value you can. You might find the std::numeric limits class helpful."
-            seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
         }
+        // "Send the biggest value you can. You might find the std::numeric limits class helpful."
+        seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
         _segments_out.emplace(seg);
     }
+    clean_shutdown();
 }
+
+void TCPConnection::clean_shutdown() {
+    // PreReq #1: The inbound stream has been fully assembled and has ended;
+    // PreReq #2: The outbound stream has been ended by the local application and fully sent(including
+    // the fact that it ended, i.e. a segment with fin ) to the remote peer;
+    // PreReq #3: The outbound stream has been fully acknowledged by the remote peer.
+    if (!_receiver.stream_out().input_ended()) {
+        return;
+    }
+
+    if (!_sender.stream_in().eof()) {
+        _linger_after_streams_finish = false;
+        return;
+    }
+
+    if (_sender.bytes_in_flight() == 0 && !_linger_after_streams_finish &&
+        time_since_last_segment_received() >= 10 * _cfg.rt_timeout) {
+        _active = false;
+    }
+}
+
 void TCPConnection::unclean_shutdown() {
     // The outbound and inbound ByteStreams should both be in the error state,
     // and active() can return false immediately.
     _receiver.stream_out().set_error();
     _sender.stream_in().set_error();
     _active = false;
+}
+
+void TCPConnection::send_rst_segment() {
+    _sender.fill_window();
+    if (_sender.segments_out().empty()) {
+        _sender.send_empty_segment();
+    }
+
+    TCPSegment seg = _sender.segments_out().front();
+    _sender.segments_out().pop();
+    if (_receiver.ackno().has_value()) {
+        seg.header().ack = true;
+        seg.header().ackno = _receiver.ackno().value();
+    }
+    // "Send the biggest value you can. You might find the std::numeric limits class helpful."
+    seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
+    seg.header().rst = true;
+    _segments_out.emplace(seg);
 }

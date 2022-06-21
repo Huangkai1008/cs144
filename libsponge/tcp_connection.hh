@@ -30,8 +30,14 @@ class TCPConnection {
     //! Send segments.
     void send_segments();
 
+    //! Clean shutdown if necessary.
+    void clean_shutdown();
+
     //! Unclean shutdown.
     void unclean_shutdown();
+
+    //! Send rst segment.
+    void send_rst_segment();
 
   public:
     //! \name "Input" interface for the writer
