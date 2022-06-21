@@ -54,21 +54,29 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             return;
         }
 
-        // The `SYN&ACK` segment must has `SYN` and `ACK` flag.
-        if (!header.ack || !header.syn) {
+        if (!seg.header().ack) {
+            if (seg.header().syn) {
+                // simultaneous open
+                _receiver.segment_received(seg);
+                _sender.send_empty_segment();
+            }
             return;
         }
 
-        _receiver.segment_received(seg);
-        _sender.send_empty_segment();
-        return;
-    }
+        if (header.rst) {
+            _sender.send_empty_segment();
+            unclean_shutdown();
+            return;
+        }
 
-    // If the segment's `RST` flag is set, sets both the inbound and outbound streams to the error
-    // state and kills the connection permanently.
-    if (header.rst) {
-        unclean_shutdown();
-        return;
+        //        // The `SYN&ACK` segment must has `SYN` and `ACK` flag.
+        //        if (!header.ack || !header.syn) {
+        //            return;
+        //        }
+        //
+        //        _receiver.segment_received(seg);
+        //        _sender.send_empty_segment();
+        //        return;
     }
 
     _receiver.segment_received(seg);
@@ -79,6 +87,14 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     // window size.
     if (_sender.segments_out().empty() && seg.length_in_sequence_space() > 0) {
         _sender.send_empty_segment();
+    }
+
+    // If the segment's `RST` flag is set, sets both the inbound and outbound streams to the error
+    // state and kills the connection permanently.
+    if (header.rst) {
+        _sender.send_empty_segment();
+        unclean_shutdown();
+        return;
     }
 
     // Extra special case:  responding to a “keep-alive” segment.
@@ -113,16 +129,13 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     }
 
     _time_since_last_segment_received += ms_since_last_tick;
-    _sender.tick(_time_since_last_segment_received);
+    _sender.tick(ms_since_last_tick);
     // if the number of consecutive retransmissions is more than an upper limit,
     // abort the connection, and send a reset segment to the peer.
     if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
         send_rst_segment();
         unclean_shutdown();
     }
-
-    // TCP clean shutdown if necessary.
-
     send_segments();
 }
 
@@ -151,7 +164,7 @@ TCPConnection::~TCPConnection() {
 }
 void TCPConnection::send_segments() {
     while (!_sender.segments_out().empty()) {
-        TCPSegment seg = _segments_out.front();
+        TCPSegment seg = _sender.segments_out().front();
         _sender.segments_out().pop();
         // Before sending the segment, the TCPConnection will ask the TCPReceiver for the fields
         // it’s responsible for on outgoing segments: ackno and window size. If there is an ackno,
@@ -159,32 +172,40 @@ void TCPConnection::send_segments() {
         if (_receiver.ackno().has_value()) {
             seg.header().ack = true;
             seg.header().ackno = _receiver.ackno().value();
+            // "Send the biggest value you can. You might find the std::numeric limits class helpful."
+            seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
         }
-        // "Send the biggest value you can. You might find the std::numeric limits class helpful."
-        seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
         _segments_out.emplace(seg);
     }
     clean_shutdown();
 }
 
 void TCPConnection::clean_shutdown() {
-    // PreReq #1: The inbound stream has been fully assembled and has ended;
-    // PreReq #2: The outbound stream has been ended by the local application and fully sent(including
-    // the fact that it ended, i.e. a segment with fin ) to the remote peer;
-    // PreReq #3: The outbound stream has been fully acknowledged by the remote peer.
-    if (!_receiver.stream_out().input_ended()) {
-        return;
+    if (_receiver.stream_out().input_ended()) {
+        if (!_sender.stream_in().eof())
+            _linger_after_streams_finish = false;
+        else if (_sender.bytes_in_flight() == 0) {
+            if (!_linger_after_streams_finish || time_since_last_segment_received() >= 10 * _cfg.rt_timeout) {
+                _active = false;
+            }
+        }
     }
-
-    if (!_sender.stream_in().eof()) {
-        _linger_after_streams_finish = false;
-        return;
-    }
-
-    if (_sender.bytes_in_flight() == 0 && !_linger_after_streams_finish &&
-        time_since_last_segment_received() >= 10 * _cfg.rt_timeout) {
-        _active = false;
-    }
+    //    // PreReq #1: The inbound stream has been fully assembled and has ended;
+    //    // PreReq #2: The outbound stream has been ended by the local application and fully sent(including
+    //    // the fact that it ended, i.e. a segment with fin ) to the remote peer;
+    //    // PreReq #3: The outbound stream has been fully acknowledged by the remote peer.
+    //    if (!_receiver.stream_out().input_ended()) {
+    //        return;
+    //    }
+    //
+    //    if (!_sender.stream_in().eof()) {
+    //        _linger_after_streams_finish = false;
+    //        return;
+    //    }
+    //
+    //    if (_sender.bytes_in_flight() == 0 && !_linger_after_streams_finish &&
+    //        time_since_last_segment_received() >= 10 * _cfg.rt_timeout) {
+    //        _active = false;
 }
 
 void TCPConnection::unclean_shutdown() {
@@ -196,19 +217,19 @@ void TCPConnection::unclean_shutdown() {
 }
 
 void TCPConnection::send_rst_segment() {
-    _sender.fill_window();
-    if (_sender.segments_out().empty()) {
-        _sender.send_empty_segment();
-    }
+    //    _sender.fill_window();
+    //    TCPSegment seg = _sender.segments_out().front();
+    //    _sender.segments_out().pop();
+    //    seg.header().ack = true;
+    //    if (_receiver.ackno().has_value())
+    //        seg.header().ackno = _receiver.ackno().value();
+    //    seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
+    //    seg.header().rst = true;
+    //    _segments_out.emplace(seg);
 
-    TCPSegment seg = _sender.segments_out().front();
-    _sender.segments_out().pop();
-    if (_receiver.ackno().has_value()) {
-        seg.header().ack = true;
-        seg.header().ackno = _receiver.ackno().value();
-    }
-    // "Send the biggest value you can. You might find the std::numeric limits class helpful."
-    seg.header().win = min(_receiver.window_size(), numeric_limits<size_t>::max());
+    TCPSegment seg;
     seg.header().rst = true;
-    _segments_out.emplace(seg);
+    _segments_out.push(seg);
+
+    unclean_shutdown();
 }
