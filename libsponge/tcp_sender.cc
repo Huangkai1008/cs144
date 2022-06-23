@@ -157,10 +157,9 @@ void TCPSender::send_empty_segment() {
     _segments_out.push(seg);
 }
 
-bool TCPSender::_is_ack_valid(uint64_t absolute_ackno) {
+bool TCPSender::_is_ack_valid(uint64_t absolute_ackno) const {
     //! Ignore the ack number greater than next seq number or less than smallest unacked seq number
-    return absolute_ackno <= _next_seqno &&
-           absolute_ackno >= unwrap(_segments_outstanding.front().header().seqno, _isn, _next_seqno);
+    return absolute_ackno <= _next_seqno;
 }
 
 Timer::Timer(const unsigned int _initial_retransmission_timeout)

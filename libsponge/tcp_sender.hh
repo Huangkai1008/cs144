@@ -155,7 +155,7 @@ class TCPSender {
     void send_segment(TCPSegment &seg);
 
     //! Whether the ack valid
-    bool _is_ack_valid(uint64_t absolute_ackno);
+    bool _is_ack_valid(uint64_t absolute_ackno) const;
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
