@@ -14,7 +14,7 @@ using namespace std;
 void get_URL(const string &host, const string &path) {
     // Your code here.
     Address address(host, "http");
-    CS144TCPSocket socket;
+    FullStackSocket socket;
     // Connect socket to the address of server.
     socket.connect(address);
     // Send http request, include the “Connection: close” header.
