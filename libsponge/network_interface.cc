@@ -53,18 +53,18 @@ void NetworkInterface::send_datagram(const InternetDatagram &dgram, const Addres
     // broadcast an ARP request for the next hop’s Ethernet address,
     // and queue the IP datagram, so it can be sent after the ARP reply is received.
     if (_waiting_arp_request_map.find(next_hop_ip) == _waiting_arp_request_map.end()) {
-        ARPMessage arpMessage;
-        arpMessage.opcode = ARPMessage::OPCODE_REQUEST;
-        arpMessage.sender_ethernet_address = _ethernet_address;
-        arpMessage.sender_ip_address = _ip_address.ipv4_numeric();
-        arpMessage.target_ethernet_address = {};
-        arpMessage.target_ip_address = next_hop_ip;
+        ARPMessage arp_message;
+        arp_message.opcode = ARPMessage::OPCODE_REQUEST;
+        arp_message.sender_ethernet_address = _ethernet_address;
+        arp_message.sender_ip_address = _ip_address.ipv4_numeric();
+        arp_message.target_ethernet_address = {};
+        arp_message.target_ip_address = next_hop_ip;
         frame.header() = {
             ETHERNET_BROADCAST,
             _ethernet_address,
             EthernetHeader::TYPE_ARP,
         };
-        frame.payload() = arpMessage.serialize();
+        frame.payload() = arp_message.serialize();
         _frames_out.emplace(frame);
 
         _waiting_arp_request_map[next_hop_ip] = ARP_REQUEST_DEFAULT_TTL;
@@ -86,36 +86,36 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
             return nullopt;
         return datagram;
     } else if (frame.header().type == EthernetHeader::TYPE_ARP) {
-        ARPMessage arpMessage;
-        if (arpMessage.parse(frame.payload()) != ParseResult::NoError) {
+        ARPMessage arp_message;
+        if (arp_message.parse(frame.payload()) != ParseResult::NoError) {
             return nullopt;
         }
 
-        const uint32_t &src_ip_address = arpMessage.sender_ip_address;
-        const uint32_t &dst_ip_address = arpMessage.target_ip_address;
-        const EthernetAddress &src_eth_address = arpMessage.sender_ethernet_address;
-        const EthernetAddress &dst_eth_address = arpMessage.target_ethernet_address;
+        const uint32_t &src_ip_address = arp_message.sender_ip_address;
+        const uint32_t &dst_ip_address = arp_message.target_ip_address;
+        const EthernetAddress &src_eth_address = arp_message.sender_ethernet_address;
+        const EthernetAddress &dst_eth_address = arp_message.target_ethernet_address;
 
         bool is_arp_request =
-            arpMessage.opcode == ARPMessage::OPCODE_REQUEST && dst_ip_address == _ip_address.ipv4_numeric();
-        bool is_arp_response = arpMessage.opcode == ARPMessage::OPCODE_REPLY && dst_eth_address == _ethernet_address;
+            arp_message.opcode == ARPMessage::OPCODE_REQUEST && dst_ip_address == _ip_address.ipv4_numeric();
+        bool is_arp_response = arp_message.opcode == ARPMessage::OPCODE_REPLY && dst_eth_address == _ethernet_address;
         // If get arp request, send response.
         if (is_arp_request) {
-            ARPMessage arpReply;
-            arpReply.opcode = ARPMessage::OPCODE_REPLY;
-            arpReply.sender_ethernet_address = _ethernet_address;
-            arpReply.sender_ip_address = _ip_address.ipv4_numeric();
-            arpReply.target_ethernet_address = src_eth_address;
-            arpReply.target_ip_address = src_ip_address;
+            ARPMessage arp_reply;
+            arp_reply.opcode = ARPMessage::OPCODE_REPLY;
+            arp_reply.sender_ethernet_address = _ethernet_address;
+            arp_reply.sender_ip_address = _ip_address.ipv4_numeric();
+            arp_reply.target_ethernet_address = src_eth_address;
+            arp_reply.target_ip_address = src_ip_address;
 
-            EthernetFrame replyFrame;
-            replyFrame.header() = {
+            EthernetFrame reply_frame;
+            reply_frame.header() = {
                 src_eth_address,
                 _ethernet_address,
                 EthernetHeader::TYPE_ARP,
             };
-            replyFrame.payload() = arpReply.serialize();
-            _frames_out.emplace(replyFrame);
+            reply_frame.payload() = arp_reply.serialize();
+            _frames_out.emplace(reply_frame);
         }
 
         if (is_arp_request || is_arp_response) {
@@ -145,18 +145,18 @@ void NetworkInterface::tick(const size_t ms_since_last_tick) {
     }
     for (auto iter = _waiting_arp_request_map.begin(); iter != _waiting_arp_request_map.end(); /* nop */) {
         if (iter->second <= ms_since_last_tick) {
-            ARPMessage arpMessage;
-            arpMessage.opcode = ARPMessage::OPCODE_REQUEST;
-            arpMessage.sender_ethernet_address = _ethernet_address;
-            arpMessage.sender_ip_address = _ip_address.ipv4_numeric();
-            arpMessage.target_ethernet_address = {};
-            arpMessage.target_ip_address = iter->first;
+            ARPMessage arp_message;
+            arp_message.opcode = ARPMessage::OPCODE_REQUEST;
+            arp_message.sender_ethernet_address = _ethernet_address;
+            arp_message.sender_ip_address = _ip_address.ipv4_numeric();
+            arp_message.target_ethernet_address = {};
+            arp_message.target_ip_address = iter->first;
 
             EthernetFrame eth_frame;
             eth_frame.header() = {/* dst  */ ETHERNET_BROADCAST,
                                   /* src  */ _ethernet_address,
                                   /* type */ EthernetHeader::TYPE_ARP};
-            eth_frame.payload() = arpMessage.serialize();
+            eth_frame.payload() = arp_message.serialize();
             _frames_out.push(eth_frame);
 
             iter->second = ARP_REQUEST_DEFAULT_TTL;
