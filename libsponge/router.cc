@@ -34,8 +34,35 @@ void Router::add_route(const uint32_t route_prefix,
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
-    DUMMY_CODE(dgram);
-    // Your code here.
+    const uint32_t dst_ip_address = dgram.header().dst;
+    // Assume the target entry is not exist.
+    auto max_matched_entry = _routing_table.end();
+
+    // `longest-prefix-match` route
+    for (auto iter = _routing_table.begin(); iter != _routing_table.end(); iter++) {
+        if (iter->prefix_length == 0 || (iter->prefix_length ^ dst_ip_address) >> (32 - iter->prefix_length) == 0) {
+            if (max_matched_entry == _routing_table.end() || max_matched_entry->prefix_length < iter->prefix_length) {
+                max_matched_entry = iter;
+            }
+        }
+    }
+
+    // The router decrements the datagram’s TTL (time to live).
+    // If the TTL was zero already, or hits zero after the decrement,
+    // the router should drop the datagram.
+    if (max_matched_entry == _routing_table.end() && dgram.header().ttl-- > 1) {
+        auto next_hop = max_matched_entry->next_hop;
+        auto &interface = _interfaces[max_matched_entry->interface_num];
+        // If the router is directly attached to the network in question, the next hop will be an empty optional.
+        // In that case, the next hop is the datagram’s destination address. But if the router is
+        // connected to the network in question through some other router, the next hop will
+        // contain the IP address of the next router along the path.
+        if (next_hop.has_value()) {
+            interface.send_datagram(dgram, next_hop.value());
+        } else {
+            interface.send_datagram(dgram, Address::from_ipv4_numeric(dst_ip_address));
+        }
+    }
 }
 
 void Router::route() {
