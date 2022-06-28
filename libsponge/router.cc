@@ -40,7 +40,7 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
 
     // `longest-prefix-match` route
     for (auto iter = _routing_table.begin(); iter != _routing_table.end(); iter++) {
-        if (iter->prefix_length == 0 || (iter->prefix_length ^ dst_ip_address) >> (32 - iter->prefix_length) == 0) {
+        if (iter->prefix_length == 0 || (iter->router_prefix ^ dst_ip_address) >> (32 - iter->prefix_length) == 0) {
             if (max_matched_entry == _routing_table.end() || max_matched_entry->prefix_length < iter->prefix_length) {
                 max_matched_entry = iter;
             }
@@ -50,7 +50,7 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
     // The router decrements the datagram’s TTL (time to live).
     // If the TTL was zero already, or hits zero after the decrement,
     // the router should drop the datagram.
-    if (max_matched_entry == _routing_table.end() && dgram.header().ttl-- > 1) {
+    if (max_matched_entry != _routing_table.end() && dgram.header().ttl-- > 1) {
         auto next_hop = max_matched_entry->next_hop;
         auto &interface = _interfaces[max_matched_entry->interface_num];
         // If the router is directly attached to the network in question, the next hop will be an empty optional.
